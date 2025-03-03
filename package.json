@@ -1,0 +1,35 @@
+{
+  "name": "azure-ai",
+  "version": "1.0.0",
+  "description": "azure ai",
+  "main": "index.ts",
+  "scripts": {
+    "build": "webpack",
+    "start": "webpack serve --open",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wenjunche/azure-ai.git"
+  },
+  "author": "wenjun@here.io",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/wenjunche/azure-ai/issues"
+  },
+  "homepage": "https://github.com/wenjunche/azure-ai#readme",
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.8.2",
+    "webpack": "^5.98.0",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.0"
+  },
+  "dependencies": {
+    "@azure/msal-browser": "^4.5.0",
+    "@azure/openai": "^2.0.0",
+    "express": "^4.21.2",
+    "openai": "^4.86.1"
+  }
+}
