@@ -1,15 +1,14 @@
 
-import { AzureOpenAI, AzureClientOptions } from "openai";
+import { OpenAI } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources";
+import { countTokens } from "./helper";
 
-// can be found in Endpoints and Keys of Overview of the project in AI Foundry
-declare const endpoint: string // Azure OpenAI Service Endpoint
-declare const apiKey: string;  // API Key
+declare const openaiApiKey: string;
+const apiKey = openaiApiKey; 
+const modelName =  'gpt-4o-mini';
 
-const client = new AzureOpenAI({
+const client = new OpenAI({
     apiKey,
-    apiVersion: '2025-01-01-preview',
-    endpoint,
     dangerouslyAllowBrowser: true
 });
 
@@ -21,7 +20,7 @@ const messages: ChatCompletionMessageParam[] = [
 export async function greet(): Promise<string | null> {
 
     const response = await client.chat.completions.create({
-            model:  'gpt-4o-mini',
+            model:  modelName,
             messages
         });
 
@@ -71,17 +70,16 @@ const callChatCompletion = async (prompt: ChatRequest): Promise<string | null> =
 
 const callResponseAPI = async (prompt: ResponsesRequest): Promise<ResponsesResponse | null> => {
     try {
-        console.log(`sending to AI: ${JSON.stringify(prompt)}`);
+        const tokenCount = countTokens(modelName, prompt.content);
+        console.log(`sending to AI: ${JSON.stringify(prompt)} with token count ${tokenCount}`);
 
         const response = await client.responses.create({
             model:  'gpt-4o-mini',
             input: prompt.content,
             previous_response_id: prompt.previousResponseId,
-            max_output_tokens: 5000,
-            // tools: [ {
-            //         type: 'web_search_preview'
-            //     }
-            // ]
+            tools: [
+                { type: 'web_search_preview' }
+            ]
         }, {
             maxRetries: 0
         });
@@ -102,10 +100,11 @@ const sleep = async (secs: number) => {
 }
 
 (async function () {
-
     console.log('asking 1');
-    const hello1 = await callResponseAPI({ content: 'what is await in javascript'});
+    const hello1 = await callResponseAPI({ content: 'what is the temperature of New York city today ?'});
     console.log(hello1);
+
+    // await sleep(20);
 
     // console.log('asking 2');
     // const hello2 = await callResponseAPI({ content: 'more examples please', previousResponseId: hello1?.responseId });

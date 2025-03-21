@@ -1,9 +1,16 @@
 const path = require("path");
-
+const webpack = require('webpack');
+const dotenv = require('dotenv').config(); 
+    
 module.exports = {
-    entry: "./src/index.ts",
+    entry: {
+        index: "./src/index.ts",
+        inference: "./src/inference.ts",
+        aiprojects: "./src/aiprojects.ts",
+        openai: "./src/openai.ts"
+    },
     output: {
-        filename: "bundle.js",
+        filename: "[name].bundle.js",
         path: path.resolve(__dirname, "res"),
     },
     resolve: {
@@ -18,6 +25,12 @@ module.exports = {
             },
         ],
     },
+    plugins: [
+        new webpack.DefinePlugin({
+            apiKey: JSON.stringify(process.env.apiKey),
+            endpoint: JSON.stringify(process.env.endpoint)
+        })
+    ],
     mode: "development",
     devServer: {
         static: path.resolve(__dirname, "res"), // Serve files from 'res'
