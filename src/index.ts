@@ -1,10 +1,11 @@
 
-import { AzureOpenAI, AzureClientOptions } from "openai";
+import { AzureOpenAI } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources";
 
 // can be found in Endpoints and Keys of Overview of the project in AI Foundry
-declare const endpoint: string // Azure OpenAI Service Endpoint
+// declare const endpoint: string // Azure OpenAI Service Endpoint
 declare const apiKey: string;  // API Key
+declare const endpoint: string; // replace with your Azure OpenAI endpoint
 
 const client = new AzureOpenAI({
     apiKey,
@@ -69,6 +70,11 @@ const callChatCompletion = async (prompt: ChatRequest): Promise<string | null> =
     }
 }
 
+const getTemperature = (city: string) => {
+    console.log('getHeight called with', city);
+    return 25;
+}
+
 const callResponseAPI = async (prompt: ResponsesRequest): Promise<ResponsesResponse | null> => {
     try {
         console.log(`sending to AI: ${JSON.stringify(prompt)}`);
@@ -78,10 +84,26 @@ const callResponseAPI = async (prompt: ResponsesRequest): Promise<ResponsesRespo
             input: prompt.content,
             previous_response_id: prompt.previousResponseId,
             max_output_tokens: 5000,
-            // tools: [ {
-            //         type: 'web_search_preview'
-            //     }
-            // ]
+            tools: [ 
+                // {
+                //     type: 'web_search_preview_2025_03_11'
+                // }
+                {
+                    type: 'function',
+                    name: 'getTemperature',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            city: {
+                                type: 'string',
+                            }
+                        },
+                        required: ['city'],
+                        additionalProperties: false
+                    },
+                    strict: true
+                }
+            ]
         }, {
             maxRetries: 0
         });
@@ -104,7 +126,8 @@ const sleep = async (secs: number) => {
 (async function () {
 
     console.log('asking 1');
-    const hello1 = await callResponseAPI({ content: 'what is await in javascript'});
+    // const hello1 = await callResponseAPI({ content: 'what is await in javascript'});
+    const hello1 = await callResponseAPI({ content: 'what is the temperature of New York city today ?'});
     console.log(hello1);
 
     // console.log('asking 2');

@@ -6,7 +6,7 @@ module.exports = {
     entry: {
         index: "./src/index.ts",
         inference: "./src/inference.ts",
-        aiprojects: "./src/aiprojects.ts",
+        // aiprojects: "./src/aiprojects.ts",
         openai: "./src/openai.ts"
     },
     output: {
@@ -28,7 +28,8 @@ module.exports = {
     plugins: [
         new webpack.DefinePlugin({
             apiKey: JSON.stringify(process.env.apiKey),
-            endpoint: JSON.stringify(process.env.endpoint)
+            endpoint: JSON.stringify(process.env.endpoint),
+            openaiApiKey: JSON.stringify(process.env.openaiApiKey),
         })
     ],
     mode: "development",
