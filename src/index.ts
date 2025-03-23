@@ -1,11 +1,15 @@
 
 import { AzureOpenAI } from "openai";
 import { ChatCompletionMessageParam } from "openai/resources";
+import { FunctionTool, ResponseFunctionToolCall, ResponseInput } from "openai/resources/responses/responses";
+import { countTokens } from "./helper";
 
 // can be found in Endpoints and Keys of Overview of the project in AI Foundry
 // declare const endpoint: string // Azure OpenAI Service Endpoint
 declare const apiKey: string;  // API Key
 declare const endpoint: string; // replace with your Azure OpenAI endpoint
+
+const modelName =  'gpt-4o-mini';
 
 const client = new AzureOpenAI({
     apiKey,
@@ -70,49 +74,118 @@ const callChatCompletion = async (prompt: ChatRequest): Promise<string | null> =
     }
 }
 
-const getTemperature = (city: string) => {
-    console.log('getHeight called with', city);
-    return 25;
+const temperatures: Record<string, number> = {
+    'New York': 25,
+    'Los Angeles': 30,
+    'Chicago': 20,
+    'Houston': 28,
 }
 
-const callResponseAPI = async (prompt: ResponsesRequest): Promise<ResponsesResponse | null> => {
-    try {
-        console.log(`sending to AI: ${JSON.stringify(prompt)}`);
+const getTemperature = async (ask: {city: string}) => {
+    return JSON.stringify(temperatures[ask.city] || 'City not found');
+}
 
+async function getWeather(latitude: number, longitude: number): Promise<number> {
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,wind_speed_10m&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m`);
+    const data = await response.json();
+    return data.current.temperature_2m;
+}
+
+const tools: FunctionTool[] = [
+    // { type: 'web_search_preview' },
+    {
+        type: 'function',
+        name: 'getTemperature',
+        description: 'Get the temperature of a city',
+        parameters: {
+            type: 'object',
+            properties: {
+                city: {
+                    type: 'string',
+                    description: 'The name of the city to get the temperature for'
+                }
+            },
+            required: ['city'],
+            additionalProperties: false
+        },
+        strict: true
+    }];
+
+type ToolCallOptions = {
+    previousResponseId?: string,
+    input: ResponseInput,
+    toolCall?: ResponseFunctionToolCall 
+}
+
+const useResponseAPI = async (prompt: ResponsesRequest): Promise<ResponsesResponse | null> => {    
+    const tokenCount = countTokens(modelName, prompt.content);
+    console.log(`sending to AI: ${JSON.stringify(prompt)} with token count ${tokenCount}`);
+
+    const option: ToolCallOptions = {
+        previousResponseId: prompt.previousResponseId,
+        input: [{
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: prompt.content
+              }
+            ]                
+        }]
+    }
+    return callResponseAPI(option);
+}
+
+const callResponseAPI = async (option: ToolCallOptions): Promise<ResponsesResponse | null> => {
+    try {
         const response = await client.responses.create({
             model:  'gpt-4o-mini',
-            input: prompt.content,
-            previous_response_id: prompt.previousResponseId,
-            max_output_tokens: 5000,
-            tools: [ 
-                // {
-                //     type: 'web_search_preview_2025_03_11'
-                // }
-                {
-                    type: 'function',
-                    name: 'getTemperature',
-                    parameters: {
-                        type: 'object',
-                        properties: {
-                            city: {
-                                type: 'string',
-                            }
-                        },
-                        required: ['city'],
-                        additionalProperties: false
-                    },
-                    strict: true
+            input: option.input,
+            previous_response_id: option.previousResponseId,
+            text: {
+                "format": {
+                  "type": "text"
                 }
-            ]
+              }, 
+            tools,
+            max_output_tokens: 5000
         }, {
             maxRetries: 0
         });
+        const output = response.output[0];
+        if (output.type === 'function_call') {
+            option.input.push(output)
+            option.toolCall = output;
+            return callFunction(output.name, JSON.parse(output.arguments), option);
+        }
         console.log('AI returned', response);
         return { message: response.output_text, responseId: response.id };
     } catch (err) {
         console.error(err);
         throw err;
     }
+}
+
+const callFunction = async (name: string, args: any, option: ToolCallOptions): Promise<ResponsesResponse | null> => {
+    console.log('calling function', name, args);
+    let functionValue: unknown;
+    if (name === 'getTemperature') {
+        functionValue = await getTemperature(args);
+    } else if (name === 'getWeather') {
+        functionValue =  await getWeather(args.latitude, args.longitude);
+    } else {
+        throw new Error(`Function ${name} not found`);
+    }
+    if (!option.toolCall) {
+        throw new Error('Tool call is undefined');
+    }
+    console.log('functionValue', functionValue);
+    option.input.push({
+        type: 'function_call_output',
+        call_id: option.toolCall.call_id,
+        output: JSON.stringify(functionValue)
+    });
+    return callResponseAPI(option);
 }
 
 const sleep = async (secs: number) => {
@@ -127,13 +200,13 @@ const sleep = async (secs: number) => {
 
     console.log('asking 1');
     // const hello1 = await callResponseAPI({ content: 'what is await in javascript'});
-    const hello1 = await callResponseAPI({ content: 'what is the temperature of New York city today ?'});
+    const hello1 = await useResponseAPI({ content: 'what is the temperature of New York today ?'});
     console.log(hello1);
 
-    // console.log('asking 2');
-    // const hello2 = await callResponseAPI({ content: 'more examples please', previousResponseId: hello1?.responseId });
+    console.log('asking 2');
+    const hello2 = await useResponseAPI({ content: 'what about Los Angeles', previousResponseId: hello1?.responseId });
 
-    // console.log(hello2);
+    console.log(hello2);
 
 
 
