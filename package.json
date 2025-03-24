@@ -5,6 +5,7 @@
   "main": "index.ts",
   "scripts": {
     "build": "webpack",
+    "build:upload": "tsc -p .",
     "start": "webpack serve --open",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

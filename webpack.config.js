@@ -30,6 +30,7 @@ module.exports = {
             apiKey: JSON.stringify(process.env.apiKey),
             endpoint: JSON.stringify(process.env.endpoint),
             openaiApiKey: JSON.stringify(process.env.openaiApiKey),
+            imageBase64: JSON.stringify(process.env.imageBase64),
         })
     ],
     mode: "development",

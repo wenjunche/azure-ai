@@ -132,3 +132,4 @@ dist
 res/*.js
 
 .env
+build
