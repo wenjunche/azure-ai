@@ -41,11 +41,34 @@ async function getTickets(): Promise<Ticket[]> {
 }
 
 async function embedText(text: string): Promise<number[]> {
-  const res = await openai.createEmbedding({
+  const res = await openai.embeddings.create({
     model: 'text-embedding-3-small',
     input: text,
   });
-  return res.data.data[0].embedding;
+  return res.data[0].embedding;
+}
+
+function splitText(text: string, maxLength: number = 3000): string[] {
+  const chunks: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    chunks.push(text.slice(i, i + maxLength));
+    i += maxLength;
+  }
+  return chunks;
+}
+
+function averageEmbeddings(embeddings: number[][]): number[] {
+  const length = embeddings[0].length;
+  const sum = new Array(length).fill(0);
+
+  for (const emb of embeddings) {
+    for (let i = 0; i < length; i++) {
+      sum[i] += emb[i];
+    }
+  }
+
+  return sum.map((v) => v / embeddings.length);
 }
 
 function cosineSimilarity(vec1: number[], vec2: number[]): number {
@@ -68,8 +91,8 @@ async function queryLLM(question: string): Promise<string> {
 
   const context = topMatch.map(m => m.text).join('\n---\n');
 
-  const completion = await openai.createChatCompletion({
-    model: 'gpt-4',
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: 'You are a Zendesk assistant.' },
       {
@@ -79,7 +102,7 @@ async function queryLLM(question: string): Promise<string> {
     ],
   });
 
-  return completion.data.choices[0].message?.content ?? 'No response.';
+  return completion.choices[0].message?.content ?? 'No response.';
 }
 
 async function main() {
@@ -87,12 +110,19 @@ async function main() {
   const tickets = await getTickets();
 
   console.log('Embedding tickets...');
+  let maxTickets = 2;
   for (const t of tickets) {
-    const embedding = await embedText(t.text);
-    memoryStore.push({ ...t, embedding });
+    console.log(`Ticket ${t.id} → text:`, t.text);
+    const chunks = splitText(t.text);
+    const embeddings = await Promise.all(chunks.map(embedText));
+    const averaged = averageEmbeddings(embeddings);
+    console.log(`Ticket ${t.id} → vector length:`, averaged.length)
+    memoryStore.push({ ...t, embedding: averaged });
+    maxTickets--;
+    if (maxTickets <= 0) break;
   }
 
-  const question = 'How can I reset my password?';
+  const question = 'What did Emma Kelly say?';
   const answer = await queryLLM(question);
   console.log('Answer:', answer);
 }
