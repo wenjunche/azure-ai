@@ -1,6 +1,6 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
-import { OpenAI } from 'openai';
+import { OpenAI, toFile } from 'openai';
 
 dotenv.config();
 
@@ -30,13 +30,19 @@ const openai = new OpenAI({
   dangerouslyAllowBrowser: true
 });
 
+const storeName = 'w-poc-store-zendesk';
 const memoryStore: Ticket[] = [];
 
 async function getTickets(): Promise<Ticket[]> {
   const res = await zendesk.get('/tickets.json');
   return res.data.tickets.map((t: any) => ({
     id: t.id,
-    text: `${t.subject}\n${t.description}`,
+    text: JSON.stringify({
+      ticketId: t.id,
+      subject: t.subject,
+      description: t.description,
+      status: t.status,
+    }),
   }));
 }
 
@@ -105,19 +111,63 @@ async function queryLLM(question: string): Promise<string> {
   return completion.choices[0].message?.content ?? 'No response.';
 }
 
+const createVectorStore = async (): Promise<string> => {
+  let storeId: string | undefined = undefined;
+  const list = await openai.vectorStores.list();
+  for (const store of list.data) {
+      if (store.name === storeName) {
+          storeId = store.id;
+          console.log('store found', store);
+          break;
+      }
+  }
+  if (!storeId) {
+      const store = await openai.vectorStores.create({
+          name: storeName,
+          expires_after: { anchor: 'last_active_at', days: 1} 
+      });
+      storeId = store.id;
+      console.log('store created', store);
+  }
+  const files = await openai.files.list();
+  console.log('files', files);
+  for (const f of files.data) {
+      console.log('found file', f);
+  }
+  console.log(`store id ${storeId}`);
+  return storeId;
+}
+
+async function storeTicket(storeId: string, ticket: Ticket): Promise<void> {
+  const file = await openai.files.create({
+    purpose: 'assistants',
+    file: await toFile(Buffer.from(ticket.text)),
+  });
+  const attach = await openai.vectorStores.files.create(storeId, {
+    file_id: file.id,
+  }, {
+    maxRetries: 1,
+  });
+  console.log('file stored', attach);
+}
+
 async function main() {
+  const storeId = await createVectorStore();
+
   console.log('Fetching tickets...');
   const tickets = await getTickets();
 
   console.log('Embedding tickets...');
   let maxTickets = 2;
   for (const t of tickets) {
-    console.log(`Ticket ${t.id} → text:`, t.text);
     const chunks = splitText(t.text);
     const embeddings = await Promise.all(chunks.map(embedText));
     const averaged = averageEmbeddings(embeddings);
     console.log(`Ticket ${t.id} → vector length:`, averaged.length)
     memoryStore.push({ ...t, embedding: averaged });
+
+    await storeTicket(storeId, t);
+
     maxTickets--;
     if (maxTickets <= 0) break;
   }
