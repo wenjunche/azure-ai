@@ -1,6 +1,9 @@
 import axios from 'axios';
 import dotenv from 'dotenv';
 import { OpenAI, toFile } from 'openai';
+import fs from 'fs';
+import path from 'path';
+import { Assistant } from 'openai/resources/beta/assistants';
 
 dotenv.config();
 
@@ -116,9 +119,14 @@ const createVectorStore = async (): Promise<string> => {
   const list = await openai.vectorStores.list();
   for (const store of list.data) {
       if (store.name === storeName) {
-          storeId = store.id;
-          console.log('store found', store);
-          break;
+        if (store.status === 'expired') {
+          console.log('deleting expired store', store.id);
+          await openai.vectorStores.del(store.id);
+          continue;
+        }
+        storeId = store.id;
+        console.log('store found', store.id);
+        break;
       }
   }
   if (!storeId) {
@@ -128,6 +136,15 @@ const createVectorStore = async (): Promise<string> => {
       });
       storeId = store.id;
       console.log('store created', store);
+
+      console.log('Fetching tickets...');
+      const tickets = await getTickets();
+      let maxTickets = 2;
+      for (const t of tickets) {    
+        await storeTicket(storeId, t);
+        maxTickets--;
+        if (maxTickets <= 0) break;
+      }        
   }
   const files = await openai.files.list();
   console.log('files', files);
@@ -139,9 +156,13 @@ const createVectorStore = async (): Promise<string> => {
 }
 
 async function storeTicket(storeId: string, ticket: Ticket): Promise<void> {
+  const tempPath = path.join('.', 'tmp', `${ticket.id}.json`);
+  console.log(`uploading ${tempPath}`);
+  fs.writeFileSync (tempPath, ticket.text, 'utf-8');
+
   const file = await openai.files.create({
     purpose: 'assistants',
-    file: await toFile(Buffer.from(ticket.text)),
+    file: fs.createReadStream(tempPath),
   });
   const attach = await openai.vectorStores.files.create(storeId, {
     file_id: file.id,
@@ -151,30 +172,65 @@ async function storeTicket(storeId: string, ticket: Ticket): Promise<void> {
   console.log('file stored', attach);
 }
 
+async function createAssistant(storeId: string): Promise<Assistant> {
+  const assistant = await openai.beta.assistants.create({
+    name: 'Zendesk Helper',
+    instructions: 'Answer Zendesk-related support questions using ticket data.',
+    model: 'gpt-4o-mini',
+    tools: [{ type: 'file_search' }],
+    tool_resources: {
+      file_search: {
+        vector_store_ids: [storeId],
+      },
+    },    
+  });
+  return assistant
+}
+
+async function askAssistant(assistantId: string, prompt: string) {
+  const thread = await openai.beta.threads.create();
+  await openai.beta.threads.messages.create(thread.id, {
+    role: 'user',
+    content: prompt,
+  });
+  const run = await openai.beta.threads.runs.create(thread.id, {
+    assistant_id: assistantId,
+  });
+  let runStatus = run;
+  while (runStatus.status !== 'completed') {
+    console.log('Waiting for run to complete...');
+    await new Promise((r) => setTimeout(r, 1000));
+    runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+  }
+  const messages = await openai.beta.threads.messages.list(thread.id);
+  const lastMessage = messages.data[0];
+  return lastMessage;
+}
+
 async function main() {
   const storeId = await createVectorStore();
+  const assistant = await createAssistant(storeId);
+  const answer = await askAssistant(assistant.id, 'What did Emma Kelly say?');
+  console.log('Answer:', answer.content);
 
-  console.log('Fetching tickets...');
-  const tickets = await getTickets();
 
-  console.log('Embedding tickets...');
-  let maxTickets = 2;
-  for (const t of tickets) {
-    const chunks = splitText(t.text);
-    const embeddings = await Promise.all(chunks.map(embedText));
-    const averaged = averageEmbeddings(embeddings);
-    console.log(`Ticket ${t.id} → vector length:`, averaged.length)
-    memoryStore.push({ ...t, embedding: averaged });
+  // console.log('Fetching tickets...');
+  // const tickets = await getTickets();
+  // console.log('Embedding tickets...');
+  // let maxTickets = 2;
+  // for (const t of tickets) {
+  //   const chunks = splitText(t.text);
+  //   const embeddings = await Promise.all(chunks.map(embedText));
+  //   const averaged = averageEmbeddings(embeddings);
+  //   console.log(`Ticket ${t.id} → vector length:`, averaged.length)
+  //   memoryStore.push({ ...t, embedding: averaged });
+  //   maxTickets--;
+  //   if (maxTickets <= 0) break;
+  // }
 
-    await storeTicket(storeId, t);
-
-    maxTickets--;
-    if (maxTickets <= 0) break;
-  }
-
-  const question = 'What did Emma Kelly say?';
-  const answer = await queryLLM(question);
-  console.log('Answer:', answer);
+  // const question = 'What did Emma Kelly say?';
+  // const answer = await queryLLM(question);
+  // console.log('Answer:', answer);
 }
 
 main().catch(console.error);
