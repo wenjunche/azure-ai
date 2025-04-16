@@ -149,7 +149,7 @@ const createVectorStore = async (): Promise<string> => {
   const files = await openai.files.list();
   console.log('files', files);
   for (const f of files.data) {
-      console.log('found file', f);
+      console.log('found file', f.filename);
   }
   console.log(`store id ${storeId}`);
   return storeId;
@@ -187,6 +187,18 @@ async function createAssistant(storeId: string): Promise<Assistant> {
   return assistant
 }
 
+async function searchStore(storeId: string, query: string): Promise<any> {
+  const response = await openai.responses.create({
+    model: "gpt-4o-mini",
+    input: query,
+    tools: [{
+        type: "file_search",
+        vector_store_ids: [storeId],
+    }],
+  });
+  console.log(JSON.stringify(response));  
+}
+
 async function askAssistant(assistantId: string, prompt: string) {
   const thread = await openai.beta.threads.create();
   await openai.beta.threads.messages.create(thread.id, {
@@ -209,10 +221,12 @@ async function askAssistant(assistantId: string, prompt: string) {
 
 async function main() {
   const storeId = await createVectorStore();
-  const assistant = await createAssistant(storeId);
-  const answer = await askAssistant(assistant.id, 'What did Emma Kelly say?');
-  console.log('Answer:', answer.content);
 
+  // const assistant = await createAssistant(storeId);
+  // const answer = await askAssistant(assistant.id, 'What did Emma Kelly say?');
+  // console.log('Answer:', answer.content);
+
+  await searchStore(storeId, 'Did Vincent Sterling report any issues ?');
 
   // console.log('Fetching tickets...');
   // const tickets = await getTickets();
