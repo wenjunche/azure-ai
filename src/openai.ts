@@ -1,10 +1,13 @@
 
 import { OpenAI } from "openai";
-import { ChatCompletionMessageParam } from "openai/resources";
+import { ChatCompletionMessageParam, ChatCompletionUserMessageParam } from "openai/resources";
 import { countTokens } from "./helper";
 import { FunctionTool, ResponseFunctionToolCall, ResponseInput } from "openai/resources/responses/responses";
 
 declare const openaiApiKey: string;
+declare const imageBase64: string; // example base64 image
+declare const longText: string;
+
 const apiKey = openaiApiKey; 
 const modelName =  'gpt-4o-mini';
 
@@ -47,6 +50,24 @@ type ChatRequest = {
     previousMessages?: ChatMessage[];
 }
 
+const imageMessages2: ChatCompletionUserMessageParam[] = [
+    { role: 'user', 
+      content: [
+            {
+                type: 'text',
+                text: 'please summarize the image' 
+            },
+            {
+                type: 'image_url',
+                image_url: {
+                    url: `data:image/jpeg;base64,${imageBase64}`,
+                    // detail: 'low',
+                }
+            }
+        ],
+    }
+  ];
+
 const callChatCompletion = async (prompt: ChatRequest): Promise<string | null> => {
 
     const messages = [];
@@ -59,7 +80,7 @@ const callChatCompletion = async (prompt: ChatRequest): Promise<string | null> =
     try {
         const response = await client.chat.completions.create({
             model:  'gpt-4o-mini',
-            messages
+            messages: messages
         });
         console.log('AI returned', response);
         return response.choices[0].message.content;
@@ -112,6 +133,22 @@ type ToolCallOptions = {
     toolCall?: ResponseFunctionToolCall 
 }
 
+const imageMessages: ResponseInput = [
+    { role: 'user', 
+      content: [
+            {
+                type: 'input_text',
+                text: 'please summarize the image' 
+            },
+            {
+                type: 'input_image',
+                image_url: `data:image/png;base64,${imageBase64}`,
+                detail: 'high',
+            }
+        ],
+    }
+  ];
+
 const useResponseAPI = async (prompt: ResponsesRequest): Promise<ResponsesResponse | null> => {    
     const tokenCount = countTokens(modelName, prompt.content);
     console.log(`sending to AI: ${JSON.stringify(prompt)} with token count ${tokenCount}`);
@@ -135,7 +172,7 @@ const callResponseAPI = async (option: ToolCallOptions): Promise<ResponsesRespon
     try {
         const response = await client.responses.create({
             model:  'gpt-4o-mini',
-            input: option.input,
+            input:  option.input,
             previous_response_id: option.previousResponseId,
             text: {
                 "format": {
@@ -189,24 +226,24 @@ const sleep = async (secs: number) => {
 }
 
 (async function () {
-    console.log('asking 1');
-    const hello1 = await useResponseAPI({ content: 'what is the temperature of New York city today ?'});
-    console.log(hello1);
+    // console.log('asking 1');
+    // const hello1 = await useResponseAPI({ content: 'what is the temperature of New York city today ?'});
+    // console.log(hello1);
 
     // await sleep(20);
 
-    console.log('asking 2');
-    const hello2 = await useResponseAPI({ content: 'what about Houston', previousResponseId: hello1?.responseId });
+    // console.log('asking 2');
+    // const hello2 = await useResponseAPI({ content: 'what about Houston', previousResponseId: hello1?.responseId });
 
-    console.log(hello2);
+    // console.log(hello2);
 
 
 
-    // console.log('asking question 1');
-    // const q1: ChatMessage = { role: 'user', content: 'what is await in javascript' };
-    // const history: ChatMessage[] = [q1];
-    // const answer1 = await callChatCompletion({ message: q1 });
-    // console.log(answer1);
+    console.log('asking question 1');
+    const q1: ChatMessage = { role: 'user', content: `summarize the following text: ${longText}` };
+    const history: ChatMessage[] = [q1];
+    const answer1 = await callChatCompletion({ message: q1 });
+    console.log(answer1);
     // if (answer1) {
     //     history.push({ role: 'assistant', content: answer1 });
     // }

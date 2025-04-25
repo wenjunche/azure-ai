@@ -7,7 +7,8 @@ module.exports = {
         index: "./src/index.ts",
         inference: "./src/inference.ts",
         // aiprojects: "./src/aiprojects.ts",
-        openai: "./src/openai.ts"
+        openai: "./src/openai.ts",
+        vercel: "./src/vercel.ts"
     },
     output: {
         filename: "[name].bundle.js",
@@ -29,8 +30,11 @@ module.exports = {
         new webpack.DefinePlugin({
             apiKey: JSON.stringify(process.env.apiKey),
             endpoint: JSON.stringify(process.env.endpoint),
+            apiKeyWest: JSON.stringify(process.env.apiKeyWest),
+            endpointWest: JSON.stringify(process.env.endpointWest),
             openaiApiKey: JSON.stringify(process.env.openaiApiKey),
             imageBase64: JSON.stringify(process.env.imageBase64),
+            longText: JSON.stringify(process.env.longText),
         })
     ],
     mode: "development",
