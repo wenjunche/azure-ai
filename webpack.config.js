@@ -35,6 +35,9 @@ module.exports = {
             openaiApiKey: JSON.stringify(process.env.openaiApiKey),
             imageBase64: JSON.stringify(process.env.imageBase64),
             longText: JSON.stringify(process.env.longText),
+            zendeskDomain: JSON.stringify(process.env.zendeskDomain),
+            zendeskEmail: JSON.stringify(process.env.zendeskEmail),
+            zendeskAPIKey: JSON.stringify(process.env.zendeskAPIKey),
         })
     ],
     mode: "development",
