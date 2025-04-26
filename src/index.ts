@@ -1,6 +1,6 @@
 
 import { AzureOpenAI } from "openai";
-import { ChatCompletionMessageParam } from "openai/resources";
+import { ChatCompletionMessageParam, ChatCompletionUserMessageParam } from "openai/resources";
 import { FileSearchTool, FunctionTool, ResponseFunctionToolCall, ResponseInput, ResponseInputItem } from "openai/resources/responses/responses";
 import { countTokens } from "./helper";
 
@@ -9,18 +9,35 @@ import { countTokens } from "./helper";
 declare const apiKey: string;  // API Key
 declare const endpoint: string; // replace with your Azure OpenAI endpoint
 declare const imageBase64: string; // example base64 image
+declare const longText: string;
+declare const apiKeyWest: string;  // API Key
+declare const endpointWest: string; // replace with your Azure OpenAI endpoint
 
 const modelName =  'gpt-4o-mini';
 
 const client = new AzureOpenAI({
-    apiKey,
-    apiVersion: '2025-01-01-preview',
-    endpoint,
+    apiKey: apiKeyWest,
+    apiVersion: '2024-04-01-preview', //'2025-03-01-preview',
+    endpoint: endpointWest,
     dangerouslyAllowBrowser: true
 });
 
-const messages: ChatCompletionMessageParam[] = [
-    { role: 'user', content: 'why is sky blue' }
+const imageMessages: ChatCompletionUserMessageParam[] = [
+    { role: 'user', 
+      content: [
+            {
+                type: 'text',
+                text: 'please summarize the image' 
+            },
+            {
+                type: 'image_url',
+                image_url: {
+                    url: `data:image/jpeg;base64,${imageBase64}`,
+                    // detail: 'low',
+                }
+            }
+        ],
+    }
   ];
 
 type ResponsesRequest = {
@@ -42,6 +59,8 @@ type ChatRequest = {
 }
 
 const callChatCompletion = async (prompt: ChatRequest): Promise<string | null> => {
+    const tokenCount = countTokens(modelName, prompt.message.content);
+    console.log(`sending to AI with token count ${tokenCount}`);
 
     const messages = [];
     if (prompt.previousMessages) {
@@ -53,7 +72,8 @@ const callChatCompletion = async (prompt: ChatRequest): Promise<string | null> =
     try {
         const response = await client.chat.completions.create({
             model:  'gpt-4o-mini',
-            messages
+            messages: imageMessages,
+            max_completion_tokens: 200
         });
         console.log('AI returned', response);
         return response.choices[0].message.content;
@@ -140,21 +160,21 @@ type ToolCallOptions = {
 
 const callResponseAPI = async (prompt: ResponsesRequest): Promise<ResponsesResponse | null> => {
     const tokenCount = countTokens(modelName, prompt.content);
-    console.log(`sending to AI: ${JSON.stringify(prompt)} with token count ${tokenCount}`);
+    console.log(`sending to AI with token count ${tokenCount}`);
 
     const option: ToolCallOptions = {
         previousResponseId: prompt.previousResponseId,
         input: [
-            // {
-            //     role: "user",
-            //     content: [
-            //     {
-            //         type: "input_text",
-            //         text: prompt.content
-            //     }
-            //     ]                
-            // }
-            imageInput
+            {
+                role: "user",
+                content: [
+                {
+                    type: "input_text",
+                    text: prompt.content
+                }
+                ]                
+            }
+            // imageInput
         ]
     }
 
@@ -264,9 +284,12 @@ const sleep = async (secs: number) => {
 const questions = async function () {
 
     console.log('asking 1');
-    const hello1 = await callResponseAPI({ content: 'please summarize the image'});
+    // const hello1 = await callResponseAPI({ content: 'please summarize the image'});
 
-    // const hello1 = await callResponseAPI({ content: 'what is the temperature of New York today ?'});
+    const q1: ChatMessage = { role: 'user', content: `summarize the following text: ${longText}` };
+    const hello1 = await callChatCompletion({ message: q1 });
+
+    // const hello1 = await callResponseAPI({ content: `summarize the following text: ${longText}` });
     // console.log(hello1);
 
     // console.log('asking 2');
