@@ -10,6 +10,7 @@ dotenv.config();
 interface Ticket {
   id: number;
   text: string;
+  comments?: any[];
   embedding?: number[];
 }
 
@@ -38,14 +39,33 @@ const memoryStore: Ticket[] = [];
 
 async function getTickets(): Promise<Ticket[]> {
   const res = await zendesk.get('/tickets.json');
-  return res.data.tickets.map((t: any) => ({
-    id: t.id,
-    text: JSON.stringify({
-      ticketId: t.id,
-      subject: t.subject,
-      description: t.description,
-      status: t.status,
-    }),
+  const tickets = [];
+  for (const t of res.data.tickets) {
+    tickets.push(
+      {
+        id: t.id,
+        subject: t.subject,
+        description: t.description,
+        status: t.status,
+        text: JSON.stringify({
+          ticketId: t.id,
+          subject: t.subject,
+          description: t.description,
+          status: t.status,
+        }),
+      }
+    )
+  }
+  return tickets;
+}
+
+async function getTicketComments(ticket: Ticket): Promise<void> {
+  const res = await zendesk.get(`/tickets/${ticket.id}/comments.json`);
+  ticket.comments = res.data.comments.map((c: any) => ({
+    id: c.id,
+    body: c.body,
+    authorId: c.author_id,
+    createdAt: c.created_at,
   }));
 }
 
@@ -140,14 +160,14 @@ const createVectorStore = async (): Promise<string> => {
       console.log('Fetching tickets...');
       const tickets = await getTickets();
       let maxTickets = 2;
-      for (const t of tickets) {    
+      for (const t of tickets) {
+        await getTicketComments(t);
         await storeTicket(storeId, t);
         maxTickets--;
         if (maxTickets <= 0) break;
       }        
   }
   const files = await openai.files.list();
-  console.log('files', files);
   for (const f of files.data) {
       console.log('found file', f.filename);
   }
@@ -169,7 +189,6 @@ async function storeTicket(storeId: string, ticket: Ticket): Promise<void> {
   }, {
     maxRetries: 1,
   });
-  console.log('file stored', attach);
 }
 
 async function createAssistant(storeId: string): Promise<Assistant> {
