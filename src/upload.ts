@@ -18,7 +18,7 @@ const client = new AzureOpenAI({
     dangerouslyAllowBrowser: true
 });
 
-const filename = 'test.pdf';
+const filename = 'aapl.pdf';
 const filepath = join('.', filename);
 
 const sleep = async (secs: number) => {

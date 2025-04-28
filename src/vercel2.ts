@@ -53,23 +53,23 @@ const questions = async() => {
         {
             role: 'user',
             content: [
-                {
-                    type: 'text',
-                    text: 'which llm do you use'
-                },
                 // {
                 //     type: 'text',
-                //     text: 'please summarize the image'
+                //     text: 'which llm do you use'
                 // },
-                // {
-                //     type: 'image',
-                //     image: imageBase64,
-                //     providerOptions: {
-                //         openai: {
-                //             imageDetail: 'low'
-                //         }
-                //     }
-                // }
+                {
+                    type: 'text',
+                    text: 'please summarize the image'
+                },
+                {
+                    type: 'image',
+                    image: imageBase64!,
+                    providerOptions: {
+                        openai: {
+                            imageDetail: 'low'
+                        }
+                    }
+                }
             ]
         }
     ]

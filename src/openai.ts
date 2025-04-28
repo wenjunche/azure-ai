@@ -80,7 +80,7 @@ const callChatCompletion = async (prompt: ChatRequest): Promise<string | null> =
     try {
         const response = await client.chat.completions.create({
             model:  'gpt-4o-mini',
-            messages: messages
+            messages: imageMessages2 // messages
         });
         console.log('AI returned', response);
         return response.choices[0].message.content;
