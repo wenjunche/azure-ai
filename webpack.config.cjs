@@ -41,11 +41,12 @@ module.exports = {
         })
     ],
     mode: "development",
+    devtool: "source-map",
     devServer: {
         static: path.resolve(__dirname, "res"), // Serve files from 'res'
         port: 3000, // Change the port if needed
         open: false, // Open browser automatically
         hot: true, // Enable Hot Module Replacement
-        compress: true, // Enable gzip compression
+        compress: false, // Enable gzip compression
     },    
 };

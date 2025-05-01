@@ -2,6 +2,7 @@
   "name": "azure-ai",
   "version": "1.0.0",
   "description": "azure ai",
+  "type": "module",
   "main": "index.ts",
   "scripts": {
     "build": "webpack",
