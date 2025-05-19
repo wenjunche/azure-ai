@@ -1,5 +1,6 @@
 import { CoreMessage, generateText, streamText } from 'ai';
-import { createAzure } from "@quail-ai/azure-ai-provider";
+import { createAzure } from '@ai-sdk/azure';
+import { createAzure as createAzure2 } from "@quail-ai/azure-ai-provider";
 import { createAmazonBedrock } from '@ai-sdk/amazon-bedrock'
 
 import dotenv from 'dotenv';
@@ -17,14 +18,16 @@ const openAImodelName =  'gpt-4o-mini';
 
 const apiVersion = 'api-version=2024-05-01-preview';
 
-const openAIBaseUrl = 'https://ai-poc147421407900.services.ai.azure.com/openai/deployments/';
-const deepSeekBaseUrl = 'https://ai-poc147421407900.services.ai.azure.com/models/';
-const llamaBaseUrl = 'https://ai-poc147421407900.services.ai.azure.com/models/';
-const baseUrl = 'https://ai-poc147421407900.services.ai.azure.com/models/';
+const baseUrl = process.env.inferencendpoint;
 
 const imageBase64 = process.env.imageBase64; // example base64 image
 
 const azure = createAzure({
+    apiKey: apiKey,
+    baseURL: `${endpoint}openai/deployments/`,
+  });
+
+const azure2 = createAzure2({
     apiKey,
     apiVersion: apiVersion,
     endpoint: baseUrl,
@@ -75,7 +78,8 @@ const questions = async() => {
     ]
 
     const resp = await generateText({
-        model: bedrock('anthropic.claude-v2:1'),  // azure(llmaName),
+        // model: bedrock('anthropic.claude-v2:1'),  // azure(llmaName),
+        model: azure(openAImodelName),
         messages,
         maxRetries: 0,
         maxTokens: 1000,
