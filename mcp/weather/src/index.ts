@@ -6,11 +6,13 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 
 import express, { Router } from 'express';
 import { z } from "zod";
+import cors from 'cors';
 
 const NWS_API_BASE = "https://api.weather.gov";
 const USER_AGENT = "weather-app/1.0";
 
 const app = express();
+app.use(cors());
 app.use(express.json());
 
 
@@ -192,7 +194,51 @@ app.post('/mcp', async (req: express.Request, res: express.Response) => {
   }
 });
 
-const PORT = 3000;
+
+// SSE endpoint
+let clients: express.Response[] = [];
+const dummyToolManifest = {
+  type: 'tool-manifest',
+  tools: [
+    {
+      name: 'echo',
+      description: 'Echoes input text',
+      input_schema: {
+        type: 'object',
+        properties: {
+          message: { type: 'string' },
+        },
+        required: ['message'],
+      },
+    },
+  ],
+};
+app.get('/mcp', (req: express.Request, res: express.Response) => {
+  // Set headers for SSE
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  const client = res;
+  clients.push(client);
+
+  console.log('SSE Client connected');
+  // Remove on disconnect
+  req.on('close', () => {
+    clients = clients.filter((c) => c !== client);
+    console.log('SSE Client disconnected');
+  });
+
+  setTimeout(() => {
+    console.log('Sending dummy tool manifest to SSE client');
+    res.write(`data: ${JSON.stringify(dummyToolManifest)}\n\n`);
+  }, 1000);
+});
+
+
+
+const PORT = 3002;
 app.listen(PORT, () => {
   console.log(`MCP Stateless Streamable HTTP Server listening on port ${PORT}`);
 });

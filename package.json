@@ -39,7 +39,7 @@
     "@azure/msal-browser": "^4.5.0",
     "@azure/openai": "^2.0.0",
     "@quail-ai/azure-ai-provider": "^1.1.1",
-    "ai": "^4.2.4",
+    "ai": "^4.3.16",
     "express": "^4.21.2",
     "js-tiktoken": "^1.0.19",
     "openai": "4.87.4",
