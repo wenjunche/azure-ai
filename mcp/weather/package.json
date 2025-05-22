@@ -9,7 +9,9 @@
   "scripts": {
     "build": "tsc",
     "client": "node build/client.js",
-    "server": "node build/index.js"
+    "server": "node build/index.js",
+    "sse-server": "node build/sse-server.js",
+    "sse-client": "node build/sse-client.js"
   },
   "keywords": [],
   "author": "",
