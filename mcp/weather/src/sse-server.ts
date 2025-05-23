@@ -39,6 +39,7 @@ function getServer() {
     async ({ state }) => {
         const stateCode = state.toUpperCase();
         const alertsUrl = `${NWS_API_BASE}/alerts?area=${stateCode}`;
+        console.log(`Fetching alerts for state: ${stateCode} from URL: ${alertsUrl}`);
         const alertsData = await makeNWSRequest<AlertsResponse>(alertsUrl);
 
         if (!alertsData) {
