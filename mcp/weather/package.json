@@ -11,15 +11,17 @@
     "client": "node build/client.js",
     "server": "node build/index.js",
     "sse-server": "node build/sse-server.js",
-    "sse-client": "node build/sse-client.js"
+    "sse-client": "node build/sse-client.js",
+    "http-server": "node build/http-server.js",
+    "http-client": "node build/http-client.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.51.0",
-    "@modelcontextprotocol/sdk": "^1.11.4",
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "zod": "^3.24.4"

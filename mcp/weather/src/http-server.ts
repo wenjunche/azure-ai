@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { AlertsResponse, ForecastPeriod, ForecastResponse, formatAlert, makeNWSRequest, PointsResponse } from './utils.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
 const NWS_API_BASE = "https://api.weather.gov";
 const USER_AGENT = "weather-app/1.0";
@@ -172,73 +173,37 @@ app.use(express.json());
 const transports: Record<string, SSEServerTransport> = {};
 
 // SSE endpoint for establishing the stream
-app.get('/mcp', async (req: Request, res: Response) => {
-  console.log('Received GET request to /sse (establishing SSE stream)');
+app.post('/mcp', async (req: Request, res: Response) => {
+  console.log('Received POST request to /mcp (establishing http)');
 
   try {
-    // Create a new SSE transport for the client
-    // The endpoint for POST messages is '/messages'
-    const transport = new SSEServerTransport('/messages', res);
-
-    // Store the transport by session ID
-    const sessionId = transport.sessionId;
-    transports[sessionId] = transport;
-
-    // Set up onclose handler to clean up transport when closed
-    transport.onclose = () => {
-      console.log(`SSE transport closed for session ${sessionId}`);
-      delete transports[sessionId];
-    };
+    const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // Use default session ID generator
+    });
 
     // Connect the transport to the MCP server
     const server = getServer();
     await server.connect(transport);
-
-    console.log(`Established SSE stream with session ID: ${sessionId}`);
+    await transport.handleRequest(req, res, req.body);
+    res.on('close', () => {
+      console.log(`Connection closed for session ${transport.sessionId}`);
+      transport.close();
+      server.close();
+    });
+    console.log(`Established HTTP transport`);
   } catch (error) {
-    console.error('Error establishing SSE stream:', error);
+    console.error('Error establishing HTTP transport:', error);
     if (!res.headersSent) {
-      res.status(500).send('Error establishing SSE stream');
+      res.status(500).send('Error establishing HTTP transport');
     }
   }
 });
 
-// Messages endpoint for receiving client JSON-RPC requests
-app.post('/messages', async (req: Request, res: Response) => {
-  console.log('Received POST request to /messages', req.url);
-
-  // Extract session ID from URL query parameter
-  // In the SSE protocol, this is added by the client based on the endpoint event
-  const sessionId = req.query.sessionId as string | undefined;
-
-  if (!sessionId) {
-    console.error('No session ID provided in request URL');
-    res.status(400).send('Missing sessionId parameter');
-    return;
-  }
-
-  const transport = transports[sessionId];
-  if (!transport) {
-    console.error(`No active transport found for session ID: ${sessionId}`);
-    res.status(404).send('Session not found');
-    return;
-  }
-
-  try {
-    // Handle the POST message with the transport
-    await transport.handlePostMessage(req, res, req.body);
-  } catch (error) {
-    console.error('Error handling request:', error);
-    if (!res.headersSent) {
-      res.status(500).send('Error handling request');
-    }
-  }
-});
 
 // Start the server
 const PORT = 3002;
 app.listen(PORT, () => {
-  console.log(`Simple SSE Server (deprecated protocol version 2024-11-05) listening on port ${PORT}`);
+  console.log(`Simple http Server listening on port ${PORT}`);
 });
 
 // Handle server shutdown
