@@ -4,6 +4,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { AlertsResponse, ForecastPeriod, ForecastResponse, formatAlert, makeNWSRequest, PointsResponse } from './utils.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { InMemoryEventStore } from './inMemoryEventStore.js';
+import { randomUUID } from 'node:crypto';
+import { log } from 'node:console';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 
 const NWS_API_BASE = "https://api.weather.gov";
 const USER_AGENT = "weather-app/1.0";
@@ -27,6 +31,9 @@ function getServer() {
     capabilities: {
         resources: {},
         tools: {},
+        logging: {
+            level: "debug", // Set logging level to debug
+        }
     },
     });
 
@@ -170,27 +177,44 @@ const app = express();
 app.use(express.json());
 
 // Store transports by session ID
-const transports: Record<string, SSEServerTransport> = {};
+const transports: Record<string, StreamableHTTPServerTransport > = {};
+const server = getServer();
 
 // SSE endpoint for establishing the stream
 app.post('/mcp', async (req: Request, res: Response) => {
-  console.log('Received POST request to /mcp (establishing http)');
+  console.log('Received POST request to /mcp (establishing http)', req.body);
 
   try {
-    const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined, // Use default session ID generator
-    });
-
-    // Connect the transport to the MCP server
-    const server = getServer();
-    await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
-    res.on('close', () => {
-      console.log(`Connection closed for session ${transport.sessionId}`);
-      transport.close();
-      server.close();
-    });
-    console.log(`Established HTTP transport`);
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    if (sessionId && transports[sessionId]) {
+      console.log(`Session with ID ${sessionId} already exists, reusing existing transport`);
+      const transport = transports[sessionId];
+      await transport.handleRequest(req, res, req.body);
+      return;
+    }
+    if (isInitializeRequest(req.body)) {
+        const eventStore = new InMemoryEventStore();
+        const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(), // Use default session ID generator
+            eventStore,
+            onsessioninitialized(sessionId) {
+                console.log(`Session initialized with ID: ${sessionId}`);
+                transports[sessionId] = transport; // Store the transport by session ID
+            },
+        });
+        // Connect the transport to the MCP server
+        await server.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+        res.on('close', () => {
+            console.log(`Connection closed for session ${transport.sessionId}`);
+            transport.close();
+            transport.sessionId && delete transports[transport.sessionId]; // Clean up transport on close
+        });
+        console.log(`Established HTTP transport`);
+    } else {
+        console.log(`Received request for uninitialized session ${sessionId}`);
+        res.status(400).send('Session not initialized');
+    }
   } catch (error) {
     console.error('Error establishing HTTP transport:', error);
     if (!res.headersSent) {
