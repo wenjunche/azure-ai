@@ -179,6 +179,7 @@ app.use(express.json());
 // Store transports by session ID
 const transports: Record<string, StreamableHTTPServerTransport > = {};
 const server = getServer();
+const stateless = false; // Set to true for stateless mode, false for stateful mode
 
 // SSE endpoint for establishing the stream
 app.post('/mcp', async (req: Request, res: Response) => {
@@ -192,6 +193,20 @@ app.post('/mcp', async (req: Request, res: Response) => {
       await transport.handleRequest(req, res, req.body);
       return;
     }
+    if (stateless) {
+        console.log(`Stateless mode: no session ID required`);
+        const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined, // Use default session ID generator
+        });
+        await server.connect(transport);
+        await transport.handleRequest(req, res, req.body);
+        res.on('close', () => {
+            console.log(`Connection closed`);
+            // transport.close();
+        });
+        console.log(`Established stateless HTTP transport`);
+        return;
+    }
     if (isInitializeRequest(req.body)) {
         const eventStore = new InMemoryEventStore();
         const transport = new StreamableHTTPServerTransport({
@@ -202,15 +217,14 @@ app.post('/mcp', async (req: Request, res: Response) => {
                 transports[sessionId] = transport; // Store the transport by session ID
             },
         });
+        transport.onclose = () => {
+            console.log(`Transport closed for session ${transport.sessionId}`);
+            transport.sessionId && delete transports[transport.sessionId]; // Clean up transport on close
+        };
         // Connect the transport to the MCP server
         await server.connect(transport);
         await transport.handleRequest(req, res, req.body);
-        res.on('close', () => {
-            console.log(`Connection closed for session ${transport.sessionId}`);
-            transport.close();
-            transport.sessionId && delete transports[transport.sessionId]; // Clean up transport on close
-        });
-        console.log(`Established HTTP transport`);
+        console.log(`Established HTTP transport ${transport.sessionId}`);
     } else {
         console.log(`Received request for uninitialized session ${sessionId}`);
         res.status(400).send('Session not initialized');

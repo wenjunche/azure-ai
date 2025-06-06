@@ -16,34 +16,38 @@ async function main() {
      apiKey: apiKey
  });
 
-
-  const mcpClient = new Client({
-      name: 'streamable-http-client',
-      version: '1.0.0',
+ const mcpClient = await experimental_createMCPClient({
+    transport,
   });
 
-  try {
-    await mcpClient.connect(transport);
-    console.log("Connected using Streamable HTTP transport", transport.sessionId);
+//   const mcpClient = new Client({
+//       name: 'streamable-http-client',
+//       version: '1.0.0',
+//   });
 
-    const tools = await mcpClient.listTools();
+  try {
+    // await mcpClient.connect(transport);
+    // console.log("Connected using Streamable HTTP transport", transport.sessionId);
+
+    const tools = await mcpClient.tools();
     console.log("Available tools:", JSON.stringify(tools, null, 2));
 
-    // const { text: answer } = await generateText({
-    //   model: openai('gpt-4o-mini'),
-    //   tools,
-    //   maxSteps: 10,
-    //   onStepFinish: async ({ toolResults }) => {
-    //     console.log(`STEP RESULTS: ${JSON.stringify(toolResults, null, 2)}`);
-    //   },
-    //   system: 'You are a helpful chatbot',
-    //   prompt: 'what is the weather alert in NY today?',
-    // });
+    const { text: answer } = await generateText({
+      model: openai('gpt-4o-mini'),
+      tools,
+      maxSteps: 10,
+      onStepFinish: async ({ toolResults }) => {
+        console.log(`STEP RESULTS: ${JSON.stringify(toolResults, null, 2)}`);
+      },
+      system: 'You are a helpful chatbot',
+      prompt: 'what is the weather alert in NY today?',
+    });
 
-    // console.log(`FINAL ANSWER: ${answer}`);
+    console.log(`FINAL ANSWER: ${answer}`);
   } catch (error) {
     console.error('Error:', error);
   } finally {
+    await transport.close();
     await mcpClient.close();
   }
 }
