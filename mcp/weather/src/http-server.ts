@@ -237,6 +237,10 @@ app.post('/mcp', async (req: Request, res: Response) => {
   }
 });
 
+app.get('/mcp', async (req: Request, res: Response) => {
+    console.log('Received GET request to /mcp (establishing http)', req.body);
+    res.status(500).send('Error establishing HTTP transport');
+});
 
 // Start the server
 const PORT = 3002;

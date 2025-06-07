@@ -13,7 +13,8 @@
     "sse-server": "node build/sse-server.js",
     "sse-client": "node build/sse-client.js",
     "http-server": "node build/http-server.js",
-    "http-client": "node build/http-client.js"
+    "http-client": "node build/http-client.js",
+    "openai-client": "node build/openai-client.js"
   },
   "keywords": [],
   "author": "",
