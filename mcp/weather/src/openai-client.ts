@@ -1,4 +1,12 @@
-
+/**
+ * Since OpenAI's Responses API does not support MCP server hosted at localhost, ngrok is needed to tunnel requests.
+ * 
+ * To run this example, you need to:
+ * 1. npm run http-server
+ * 2. ngrok http 3003,  and then copy the forwarding URL
+ * 3. set mcpServerUrl in .env file to the ngrok forwarding-URL/mcp
+ * 4. npm run openai-client
+ */
 import { OpenAI } from "openai";
 import { FunctionTool, ResponseFunctionToolCall, ResponseInput } from "openai/resources/responses/responses";
 
