@@ -14,7 +14,9 @@
     "sse-client": "node build/sse-client.js",
     "http-server": "node build/http-server.js",
     "http-client": "node build/http-client.js",
-    "openai-client": "node build/openai-client.js"
+    "openai-client": "node build/openai-client.js",
+    "ngrok-server": "ngrok http 3000",
+    "ngrok-auth": "npx ngrok config add-authtoken <your-authtoken>"
   },
   "keywords": [],
   "author": "",
