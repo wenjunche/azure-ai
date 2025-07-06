@@ -16,6 +16,9 @@ const accessKeyId = process.env.accessKeyId;
 const secretAccessKey = process.env.secretAccessKey;
 const openaiApiKey = process.env.openaiApiKey; // OpenAI API Key
 
+const githubToken = process.env.githubToken;
+const githubMcpServerUrl = 'https://api.githubcopilot.com/mcp/';
+
 const deepSeekName = 'DeepSeek-V3';
 const llmaName = 'Llama-3.3-70B-Instruct';
 const openAImodelName =  'gpt-4o-mini';
@@ -29,7 +32,7 @@ const baseUrl = process.env.inferencendpoint;
 const azureBaseUrl = 'https://wenjun-openai-service-east2.openai.azure.com/';  // Azure OPENAI service
 const azureSvcApiKey = process.env.azureSvcApiKey;
 
-const imageBase64 = process.env.imageBase64; // example base64 image
+const imageBase64 = process.env.yongjiImageBase64; // example base64 image
 
 const azure = createAzure({
     apiKey: apiKey,
@@ -52,6 +55,11 @@ const azureAIService = createAzure({
     apiKey: azureSvcApiKey,
     baseURL: `${azureBaseUrl}openai/deployments/`,
 });
+
+const openai = createOpenAI({
+     apiKey: openaiApiKey
+ });
+
 
   const SYSTEM_PROMPT =
   `You are a helpful assistant built into Here Enterprise Browser.` +
@@ -89,13 +97,45 @@ const questions = async() => {
                 }
             ]
         }
+    ];
+
+    // not supported by vercel yet https://github.com/vercel/ai/issues/6458
+    const mcpMessages: CoreMessage[] = [
+        {
+            role: 'system',
+            content: 'You are assistant built to help developers.',
+        },
+        {
+            role: 'user',
+            content: [
+                {
+                    type: 'text',
+                    text: 'please get all issues in repository named azure-ai, created by wenjunche, and search for issues that mention "Mazy" in the title or body',
+                    providerOptions: {
+                        openai: {
+                                tools: [{
+                                    type: 'mcp',
+                                    server_url: githubMcpServerUrl,
+                                    server_label: 'github-MCP-Server',
+                                    require_approval: 'never',
+                                    headers: {
+                                        'Authorization': `Bearer ${githubToken}`,
+                                    }
+                                }]
+                        }
+                    }
+                },
+            ]
+        }
     ]
+
 
     const resp = await generateText({
         // model: bedrock('anthropic.claude-v2:1'),  // azure(llmaName),
         // model: azure2(deepSeekName)
         // model: azureAIService('gpt-4.1'),
-        model: azure(openAImodelName),
+        // model: azure(openAImodelName),
+        model: openai.responses(openAImodelName),
         messages,
         maxRetries: 0,
         maxTokens: 1000,
@@ -119,7 +159,7 @@ const questions = async() => {
         */
       });
 
-    console.log(resp.text);
+    console.log(resp);
     console.log('response provided by: ', resp.response.modelId);
 }
 
