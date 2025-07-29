@@ -25,13 +25,16 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "axios": "1.2.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "express-session": "1.18.2",
     "mcp-remote": "^0.1.15",
     "zod": "^3.24.4"
   },
   "devDependencies": {
     "@types/cors": "^2.8.18",
+    "@types/express-session": "^1.18.2",
     "@types/node": "^22.15.18",
     "typescript": "^5.8.3"
   }
