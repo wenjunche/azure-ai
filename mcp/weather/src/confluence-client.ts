@@ -25,6 +25,7 @@ console.log(confluenceToken);
 //       }
 // );
 
+// https://mcp.atlassian.com/.well-known/oauth-authorization-server
 const sseTransport = new SSEClientTransport(new URL('https://mcp.atlassian.com/v1/sse'), {
     requestInit: {
         headers: {
