@@ -9,7 +9,7 @@ import OpenAI from 'openai';
 import axios from 'axios';
 import express from 'express'
 import crypto from 'crypto';
-import session from 'express-session';
+import session, { SessionData } from 'express-session';
 
 const apiKey = process.env.openaiApiKey; 
 const confluenceToken = process.env.confluenceToken;
@@ -248,6 +248,43 @@ const atlassianAuthCallback =  async (req: express.Request, res: express.Respons
     }
 };
 
+const refreshAccessToken = async (session: SessionData) => {
+
+    const clientId = session.atlassianDynamicClientId;
+    const refreshToken = session.atlassianRefreshToken;
+    const tokenEndpoint = atlassianAuthServerMetadata.token_endpoint;
+
+    if (!clientId || !refreshToken || !tokenEndpoint) {
+        throw new Error('Client ID, refreshToken or token endpoint not found in session for Atlassian refresh.');
+    }
+
+    try {
+        const requestBody: Record<string, string> = {
+            grant_type: 'refresh_token',
+            refresh_token: refreshToken,
+            client_id: clientId,
+        };
+
+        const response = await axios.post(tokenEndpoint, requestBody, {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept-encoding': 'identity',
+            }
+        });
+
+        const { access_token, refresh_token, expires_in } = response.data;
+        console.log('Atlassian Tokens Refreshed:', { access_token, refresh_token, expires_in });
+
+        session.atlassianAccessToken = access_token;
+        session.atlassianRefreshToken = refresh_token;
+    } catch (error: any) {
+        console.error('Error refreshing token:', error.response ? error.response.data : error.message);
+        // If refresh token also fails (e.g., expired, revoked), user needs to re-authenticate from scratch.
+        throw new Error('Failed to refresh access token.');
+    }
+
+}
+
 async function server() {
   const app = express();
 
@@ -265,6 +302,11 @@ async function server() {
   app.get('/auth/atlassian', atlassianAuth);
 
   app.get('/auth/atlassian/callback', atlassianAuthCallback);
+
+  app.get('/auth/atlassian/refresh', async (req: express.Request, res: express.Response) => {
+    await refreshAccessToken(req.session);
+    res.send('Atlassian access token refreshed successfully.');
+  });
 
   app.get('/', (req, res) => {
     res.send('Confluence MCP Client is running');
