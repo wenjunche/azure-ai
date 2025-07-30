@@ -1,4 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
+
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -8,7 +9,7 @@ import 'dotenv/config';
 import OpenAI from 'openai';
 import axios from 'axios';
 import express from 'express'
-import crypto from 'crypto';
+import crypto, { randomUUID } from 'crypto';
 import session, { SessionData } from 'express-session';
 
 const apiKey = process.env.openaiApiKey; 
@@ -43,6 +44,7 @@ const ATLASSIAN_AUTH_METADATA_URL = 'https://mcp.atlassian.com/.well-known/oauth
 const ATLASSIAN_OAUTH_REDIRECT_URI = process.env.ATLASSIAN_REDIRECT_URI || `http://localhost:${port}/auth/atlassian/callback`;
 const ATLASSIAN_SCOPES_REQUESTED = process.env.ATLASSIAN_SCOPES || 'read:jira-work write:jira-work offline_access';
 
+const ATLASSIAN_OAUTH_REDIRECT_URI2 = process.env.ATLASSIAN_REDIRECT_URI || `http://localhost:${port}/auth/atlassian/callback2`;
 
 const jiraQuestion = async (accessToken: string) => {
   try {
@@ -125,6 +127,10 @@ declare module 'express-session' {
         atlassianDynamicClientId?: string; // Store the DCR client ID
         atlassianAccessToken?: string;
         atlassianRefreshToken?: string;
+        atlassianAccessTokenExpiresAt?: number; // Store expiration time for proactive refresh
+        atlassianDynamicClientMetadata?: OAuthClientMetadata; // Store DCR metadata
+        authProvider?: OAuthClientProvider; // Store the auth provider instance
+        
         mcpClientId?: string; // Generic MCP DCR
         mcpCodeVerifier?: string; // Generic MCP DCR
         mcpAccessToken?: string; // Generic MCP DCR
@@ -282,7 +288,202 @@ const refreshAccessToken = async (session: SessionData) => {
         // If refresh token also fails (e.g., expired, revoked), user needs to re-authenticate from scratch.
         throw new Error('Failed to refresh access token.');
     }
+}
 
+// implement auth flow with modelcontextprotocol.
+import { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
+import { AuthorizationServerMetadata, OAuthClientInformation, OAuthClientInformationFull, OAuthClientMetadata, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
+import e from 'express';
+import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+
+interface OAuthClientProviderOptions {
+  metadataUrl: string;
+  redirectUri: string;
+  scopes: string[];
+  clientName?: string;
+  redirectToAuthorization: (authorizationUrl: URL) => void;
+}
+
+class SessionBasedOAuthClientProvider implements OAuthClientProvider {
+  private options: OAuthClientProviderOptions;
+  private metadata?: AuthorizationServerMetadata;
+  private _state: string
+  private _clientInformation?: OAuthClientInformationFull;
+  private _tokens?: OAuthTokens;
+  private _mcpCodeVerifier?: string;
+
+  constructor(options: OAuthClientProviderOptions) {
+    this.options = options;
+    this._state = randomUUID();
+  }
+
+  get redirectUrl(): string {
+    return this.options.redirectUri;
+  }
+
+  get clientMetadata(): OAuthClientMetadata {
+    return {
+      redirect_uris: [this.options.redirectUri],
+      scope: this.options.scopes.join(' '),
+      client_name: this.options.clientName,
+      token_endpoint_auth_method: 'none',
+      grant_types: ['authorization_code'],
+      response_types: ['code'],
+    };
+  }
+
+  async state(): Promise<string> {
+    return this._state;
+  }
+
+  async clientInformation(): Promise<OAuthClientInformation | undefined> {
+    return this._clientInformation; // For public clients, no client secret is stored
+  }
+
+  async saveClientInformation(clientInformation: OAuthClientInformationFull): Promise<void> {
+    console.log(`Saving client information: ${JSON.stringify(clientInformation)}`);
+    this._clientInformation = clientInformation;
+  }
+
+  async tokens(): Promise<OAuthTokens | undefined> {
+    return this._tokens;
+  }
+
+  async saveTokens(tokens: OAuthTokens): Promise<void> {
+    console.log(`Saving tokens: ${JSON.stringify(tokens)}`);
+    this._tokens = tokens;
+  }
+
+  async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    console.log(`Redirecting to authorization URL: ${authorizationUrl}`);
+    if (this.options.redirectToAuthorization) {
+      this.options.redirectToAuthorization(authorizationUrl);
+    } else {
+      // This method is meant for browser-based flows; on server, you redirect in Express handler.
+      throw new Error('Use Express res.redirect for server-side authorization.');
+    }
+  }
+
+  async saveCodeVerifier(codeVerifier: string): Promise<void> {
+    console.log(`Saving code verifier: ${codeVerifier}`);
+    this._mcpCodeVerifier = codeVerifier;
+  }
+
+  async codeVerifier(): Promise<string> {
+    return this._mcpCodeVerifier || '';
+  }
+
+  async addClientAuthentication(headers: Headers, params: URLSearchParams, url: string | URL, metadata?: AuthorizationServerMetadata): Promise<void> {
+    console.log(`Adding client authentication for URL: ${url}`);
+    // For public clients (token_endpoint_auth_method: 'none'), no authentication needed.
+    // If client_secret is present, add it to params.
+  }
+
+  async validateResourceURL(serverUrl: string | URL, resource?: string): Promise<URL | undefined> {
+    console.log(`Validating resource URL: ${serverUrl}`);
+    // Optionally validate resource URLs if needed
+    return typeof serverUrl === 'string' ? new URL(serverUrl) : serverUrl;
+  }
+
+  async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier'): Promise<void> {
+    console.log(`Invalidating credentials for scope: ${scope}`);
+    if (scope === 'all' || scope === 'client') {
+      this._clientInformation = undefined;
+    }
+    if (scope === 'all' || scope === 'tokens') {
+      this._tokens = undefined;
+    }
+    if (scope === 'all' || scope === 'verifier') {
+      this._mcpCodeVerifier = undefined;
+    }
+  }
+}
+
+const sseTransport = true; // Set to false to use Streamable HTTP transport
+const transportMap = new Map<string, SSEClientTransport | StreamableHTTPClientTransport>();
+
+const atlassianAuth2 = async (req: express.Request, res: express.Response) => {
+  let authRedirectUrl = null;
+  const client = new Client({
+        name: 'mcp-remote',
+        version: '1.0.0',
+      }, {
+        capabilities: {},
+      });
+
+  const redirectToAuthorization = (authorizationUrl: URL) => {
+    console.log(`Redirecting to authorization URL: ${authorizationUrl}`);
+    authRedirectUrl = authorizationUrl.toString();
+    res.redirect(authorizationUrl.toString());
+  }
+  const authProvider = new SessionBasedOAuthClientProvider({
+    metadataUrl: ATLASSIAN_AUTH_METADATA_URL,
+    redirectUri: ATLASSIAN_OAUTH_REDIRECT_URI2,
+    scopes: ATLASSIAN_SCOPES_REQUESTED.split(' '),
+    clientName: `HERE Enterprise Browser MCP Client - ${Date.now()}`, // Unique name
+    redirectToAuthorization,
+  });
+  req.session.authProvider = authProvider; // Store in session for later use
+
+  const eventSourceInit = {
+    fetch: (url: string | URL, init?: RequestInit) => {
+      console.log(`eventSourceInit Fetching URL: ${url} with init:`, init);
+      return Promise.resolve(authProvider?.tokens?.()).then((tokens) =>
+        fetch(url, {
+          ...init,
+          headers: {
+            ...(init?.headers as Record<string, string> | undefined),
+            ...(tokens?.access_token ? { Authorization: `Bearer ${tokens.access_token}` } : {}),
+            Accept: 'text/event-stream',
+          } as Record<string, string>,
+        }),
+      )
+    },
+  }
+
+  const url = new URL(ATLASSIAN_MCP_SERVER_URL);
+  const transport = sseTransport
+    ? new SSEClientTransport(url, {
+        authProvider,
+        requestInit: {  },
+        eventSourceInit,
+      })
+    : new StreamableHTTPClientTransport(url, {
+        authProvider,
+        requestInit: {  },
+      })
+
+  try {
+    transportMap.set(req.session.id, transport);
+
+    await client.connect(transport);
+    console.log("Connected using SSE transport");
+
+    const mcpTools = await client.listTools();
+    console.log("Available tools:", JSON.stringify(mcpTools, null, 2));
+
+  } catch (error) {
+    if (authRedirectUrl) {
+      console.log('Authorization redirect already attempted:', authRedirectUrl);
+    } else {
+      console.error('Error connecting to MCP server:', error);
+      return res.status(500).send('Failed to connect to MCP server.');
+    }
+  }
+}
+
+const atlassianAuthCallback2 =  async (req: express.Request, res: express.Response) => {
+    const { code, state, error, error_description } = req.query;
+    if (error) {
+        console.error('Atlassian Auth Error:', error, error_description);
+        return res.status(400).send(`Atlassian Authorization Failed: ${error_description || error}`);
+    } else if (!code) {
+        return res.status(400).send('Authorization code or state missing from Atlassian callback.');
+    }
+    console.log('Atlassian Auth Callback received code:', code);
+    await transportMap.get(req.session.id)?.finishAuth(code as string);
+
+    res.redirect('/');
 }
 
 async function server() {
@@ -302,6 +503,11 @@ async function server() {
   app.get('/auth/atlassian', atlassianAuth);
 
   app.get('/auth/atlassian/callback', atlassianAuthCallback);
+
+  // the auth flow with modelcontextprotocol.authProvider.
+  app.get('/auth/atlassian2', atlassianAuth2);
+  app.get('/auth/atlassian/callback2', atlassianAuthCallback2);
+
 
   app.get('/auth/atlassian/refresh', async (req: express.Request, res: express.Response) => {
     await refreshAccessToken(req.session);
