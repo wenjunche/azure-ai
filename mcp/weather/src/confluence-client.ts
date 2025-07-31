@@ -129,7 +129,6 @@ declare module 'express-session' {
         atlassianRefreshToken?: string;
         atlassianAccessTokenExpiresAt?: number; // Store expiration time for proactive refresh
         atlassianDynamicClientMetadata?: OAuthClientMetadata; // Store DCR metadata
-        authProvider?: OAuthClientProvider; // Store the auth provider instance
         
         mcpClientId?: string; // Generic MCP DCR
         mcpCodeVerifier?: string; // Generic MCP DCR
@@ -290,11 +289,11 @@ const refreshAccessToken = async (session: SessionData) => {
     }
 }
 
-// implement auth flow with modelcontextprotocol.
+// implement auth flow with OAuthClientProvider in @modelcontextprotocol.
+// this approach requires keeping track of auth proivder and transport in session, but not in req.session,  so not sure worth it.
 import { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { AuthorizationServerMetadata, OAuthClientInformation, OAuthClientInformationFull, OAuthClientMetadata, OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js';
-import e from 'express';
-import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { get } from 'http';
 
 interface OAuthClientProviderOptions {
   metadataUrl: string;
@@ -375,6 +374,11 @@ class SessionBasedOAuthClientProvider implements OAuthClientProvider {
 
   async addClientAuthentication(headers: Headers, params: URLSearchParams, url: string | URL, metadata?: AuthorizationServerMetadata): Promise<void> {
     console.log(`Adding client authentication for URL: ${url}`);
+    if (this._clientInformation?.client_id) {
+      params.set('client_id', this._clientInformation?.client_id);
+    } else {
+      console.error('No client_id available for authentication. This is expected for public clients with token_endpoint_auth_method: "none".');
+    }
     // For public clients (token_endpoint_auth_method: 'none'), no authentication needed.
     // If client_secret is present, add it to params.
   }
@@ -400,31 +404,19 @@ class SessionBasedOAuthClientProvider implements OAuthClientProvider {
 }
 
 const sseTransport = true; // Set to false to use Streamable HTTP transport
+const authProviderMap = new Map<string, OAuthClientProvider>();
 const transportMap = new Map<string, SSEClientTransport | StreamableHTTPClientTransport>();
 
-const atlassianAuth2 = async (req: express.Request, res: express.Response) => {
-  let authRedirectUrl = null;
-  const client = new Client({
+const getMCPClient = () => {
+  return new Client({
         name: 'mcp-remote',
         version: '1.0.0',
       }, {
         capabilities: {},
       });
+};
 
-  const redirectToAuthorization = (authorizationUrl: URL) => {
-    console.log(`Redirecting to authorization URL: ${authorizationUrl}`);
-    authRedirectUrl = authorizationUrl.toString();
-    res.redirect(authorizationUrl.toString());
-  }
-  const authProvider = new SessionBasedOAuthClientProvider({
-    metadataUrl: ATLASSIAN_AUTH_METADATA_URL,
-    redirectUri: ATLASSIAN_OAUTH_REDIRECT_URI2,
-    scopes: ATLASSIAN_SCOPES_REQUESTED.split(' '),
-    clientName: `HERE Enterprise Browser MCP Client - ${Date.now()}`, // Unique name
-    redirectToAuthorization,
-  });
-  req.session.authProvider = authProvider; // Store in session for later use
-
+const getTransport = (url: URL, authProvider: OAuthClientProvider): SSEClientTransport | StreamableHTTPClientTransport => {
   const eventSourceInit = {
     fetch: (url: string | URL, init?: RequestInit) => {
       console.log(`eventSourceInit Fetching URL: ${url} with init:`, init);
@@ -441,7 +433,6 @@ const atlassianAuth2 = async (req: express.Request, res: express.Response) => {
     },
   }
 
-  const url = new URL(ATLASSIAN_MCP_SERVER_URL);
   const transport = sseTransport
     ? new SSEClientTransport(url, {
         authProvider,
@@ -453,15 +444,33 @@ const atlassianAuth2 = async (req: express.Request, res: express.Response) => {
         requestInit: {  },
       })
 
+    return transport;
+}
+
+const atlassianAuth2 = async (req: express.Request, res: express.Response) => {
+  let authRedirectUrl = null;
+
+  const redirectToAuthorization = (authorizationUrl: URL) => {
+    console.log(`Redirecting to authorization URL: ${authorizationUrl}`);
+    authRedirectUrl = authorizationUrl.toString();
+    res.redirect(authorizationUrl.toString());
+  }
+  const authProvider = new SessionBasedOAuthClientProvider({
+    metadataUrl: ATLASSIAN_AUTH_METADATA_URL,
+    redirectUri: ATLASSIAN_OAUTH_REDIRECT_URI2,
+    scopes: ATLASSIAN_SCOPES_REQUESTED.split(' '),
+    clientName: `HERE Enterprise Browser MCP Client - ${Date.now()}`, // Unique name
+    redirectToAuthorization,
+  });
+  authProviderMap.set(req.session.id, authProvider); // Store in session for later use
+
+  const url = new URL(ATLASSIAN_MCP_SERVER_URL);
+  const transport = getTransport(url, authProvider);
+
   try {
     transportMap.set(req.session.id, transport);
-
-    await client.connect(transport);
+    await transport.start();
     console.log("Connected using SSE transport");
-
-    const mcpTools = await client.listTools();
-    console.log("Available tools:", JSON.stringify(mcpTools, null, 2));
-
   } catch (error) {
     if (authRedirectUrl) {
       console.log('Authorization redirect already attempted:', authRedirectUrl);
@@ -483,6 +492,21 @@ const atlassianAuthCallback2 =  async (req: express.Request, res: express.Respon
     console.log('Atlassian Auth Callback received code:', code);
     await transportMap.get(req.session.id)?.finishAuth(code as string);
 
+    const authProvider = authProviderMap.get(req.session.id);
+    if (!authProvider) {
+        console.error('No authProvider found in session.');
+        return res.status(500).send('Authentication provider not found in session.');
+    }
+    try {
+      const mcpClient = getMCPClient();
+      const transport = getTransport(new URL(ATLASSIAN_MCP_SERVER_URL), authProvider);
+      await mcpClient.connect(transport);
+      const mcpTools = await mcpClient.listTools();
+      console.log("Available tools:", JSON.stringify(mcpTools, null, 2));
+
+    } catch (error) {
+        console.error('Error connecting to MCP server:', error);
+    }
     res.redirect('/');
 }
 
