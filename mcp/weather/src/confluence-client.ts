@@ -372,7 +372,8 @@ class SessionBasedOAuthClientProvider implements OAuthClientProvider {
     return this._mcpCodeVerifier || '';
   }
 
-  async addClientAuthentication(headers: Headers, params: URLSearchParams, url: string | URL, metadata?: AuthorizationServerMetadata): Promise<void> {
+  // this function is being passed around so it needs to be an arrow function with correct `this` context.
+  addClientAuthentication = async (headers: Headers, params: URLSearchParams, url: string | URL, metadata?: AuthorizationServerMetadata): Promise<void> => {
     console.log(`Adding client authentication for URL: ${url}`);
     if (this._clientInformation?.client_id) {
       params.set('client_id', this._clientInformation?.client_id);
